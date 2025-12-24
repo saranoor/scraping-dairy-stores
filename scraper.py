@@ -1,3 +1,4 @@
+import time
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -6,8 +7,8 @@ from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-from selenium.common.exceptions import StaleElementReferenceException
-
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
+# from exceptions import TimeoutException
 def get_text_or_blank(driver, selector, retries=3):
     for _ in range(retries):
         try:
@@ -25,6 +26,8 @@ options.add_experimental_option("detach", True)
 driver = webdriver.Chrome(service=Service(), options=options)
 driver.get("https://www.google.com/maps")
 # driver.quit()
+wait = WebDriverWait(driver, 10)
+
 
 try:
     accept_button = driver.find_element(By.CSS_SELECTOR, "[aria-label='Accept all']")
@@ -32,6 +35,7 @@ try:
 except NoSuchElementException:
     print("No GDPR requirements detected")
 
+# --- search complete --- 
 search_box = WebDriverWait(driver, 5).until(
 EC.presence_of_element_located((By.CSS_SELECTOR, "#searchboxinput"))
 )
@@ -40,31 +44,66 @@ search_box.send_keys(f"dairy zip code {TARGET_PIN}")
 search_button = driver.find_element(By.CSS_SELECTOR, "button[aria-label='Search']")
 search_button.click()
 
-business_items = WebDriverWait(driver, 10).until(
-EC.presence_of_all_elements_located((By.XPATH, '//div[@role="feed"]//div[contains(@jsaction, "mouseover:pane")]'))
-)
-wait = WebDriverWait(driver, 10)
-
+# load all results
 cards_xpath = '//div[@role="feed"]//div[contains(@jsaction, "mouseover:pane")]'
-wait.until(EC.presence_of_all_elements_located((By.XPATH, cards_xpath)))
+feed = wait.until(EC.presence_of_element_located((By.XPATH, '//div[@role="feed"]')))
 
+seen = 0
 
-for idx in range(len(driver.find_elements(By.XPATH, cards_xpath))):
+no_change_count = 0
+MAX_NO_CHANGE = 15
+
+while True:
     cards = driver.find_elements(By.XPATH, cards_xpath)
-    card = cards[idx]
 
-    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", card)
-    card.click()
+    if len(cards) == seen:
+        no_change_count += 1
+        if no_change_count >= MAX_NO_CHANGE:
+            print("No more new cards. Done scrolling.")
+            break
+    else:
+        no_change_count = 0
+        seen = len(cards)
 
-    # Wait until business panel loads
-    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "h1.DUwDvf")))
+    driver.execute_script(
+        "arguments[0].scrollTop = arguments[0].scrollHeight",
+        feed
+    )
+    time.sleep(1.2)
 
-    name = get_text_or_blank(driver, "h1.DUwDvf")
-    address = get_text_or_blank(driver, 'button[data-item-id^="address"]')
-    if TARGET_PIN not in address:
+print(f"total length of cards:{len(cards)}")
+def wait_for_panel_change(driver, old_name, timeout=6):
+    print(f"name before: {old_name}")
+    WebDriverWait(driver, timeout).until(
+        lambda d: get_text_or_blank(d, "h1.DUwDvf") != old_name
+    )
+
+for card in cards:
+    print(f"card: {card}")
+    try:
+        name_before = get_text_or_blank(driver, "h1.DUwDvf")
+
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", card)
+        # driver.execute_script("arguments[0].click();", card)
+        click_target = card.find_element(By.XPATH, ".//a | .//button")
+        driver.execute_script("arguments[0].click();", click_target)
+
+        try:
+            wait_for_panel_change(driver, name_before)
+        except TimeoutException:
+            print("did not open anything moving on")
+            continue  # click didn't open anything → skip safely
+        name = get_text_or_blank(driver, "h1.DUwDvf")
+        address = get_text_or_blank(driver, 'button[data-item-id^="address"] .Io6YTe')
+
+        if TARGET_PIN not in address:
+            continue
+
+        phone = get_text_or_blank(driver, 'button[data-item-id^="phone"] .Io6YTe')
+        reviews = get_text_or_blank(driver, 'button[jsaction*="pane.rating"] span')
+        link = get_text_or_blank(driver, 'a[data-item-id="authority"]')
+
+        print(f"{name} | {address} | {phone} | {reviews} | {link}")
+
+    except StaleElementReferenceException:
         continue
-    phone = get_text_or_blank(driver, 'button[data-item-id^="phone"]')
-    reviews = get_text_or_blank(driver, 'button[jsaction*="pane.rating"] span')
-    link = get_text_or_blank(driver, 'a[data-item-id="authority"]')
-
-    print(f"Business: {name}, Address: {address}, Phone: {phone}, Reviews: {reviews}, Link: {link}")
