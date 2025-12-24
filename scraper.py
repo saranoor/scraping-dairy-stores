@@ -8,6 +8,11 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.actions.wheel_input import ScrollOrigin
+from selenium.webdriver.common.keys import Keys
+import pandas as pd
+
 # from exceptions import TimeoutException
 def get_text_or_blank(driver, selector, retries=3):
     for _ in range(retries):
@@ -26,6 +31,7 @@ options.add_experimental_option("detach", True)
 driver = webdriver.Chrome(service=Service(), options=options)
 driver.get("https://www.google.com/maps")
 # driver.quit()
+actions = ActionChains(driver)
 wait = WebDriverWait(driver, 10)
 
 
@@ -48,29 +54,43 @@ search_button.click()
 cards_xpath = '//div[@role="feed"]//div[contains(@jsaction, "mouseover:pane")]'
 feed = wait.until(EC.presence_of_element_located((By.XPATH, '//div[@role="feed"]')))
 
-seen = 0
+driver.execute_script("arguments[0].click();", feed)
+driver.execute_script("arguments[0].style.border='5px solid red'", feed)
+driver.maximize_window()
+driver.switch_to.window(driver.current_window_handle) # Brings tab to front
+actions = ActionChains(driver)
+actions.move_to_element(feed).click().perform()
 
+seen = 0
 no_change_count = 0
 MAX_NO_CHANGE = 15
 
 while True:
     cards = driver.find_elements(By.XPATH, cards_xpath)
-
-    if len(cards) == seen:
-        no_change_count += 1
-        if no_change_count >= MAX_NO_CHANGE:
-            print("No more new cards. Done scrolling.")
-            break
-    else:
-        no_change_count = 0
+    
+    if len(cards) > seen:
         seen = len(cards)
+        no_change_count = 0
+        print(f"Total cards loaded: {seen}")
+    else:
+        no_change_count += 1
+        print("giving chance")
+        if no_change_count >= MAX_NO_CHANGE:
+            break
 
-    driver.execute_script(
-        "arguments[0].scrollTop = arguments[0].scrollHeight",
-        feed
-    )
-    time.sleep(1.2)
+    # THE FIX: Scroll to the last card specifically
+    if cards:
+        # Move mouse to the card and click (focuses the tab context)
+        # actions = ActionChains(driver)
+        # actions.move_to_element(cards[-1]).click().perform()
+        
+        # Small wait for the click to register
+        time.sleep(0.5)
+        
+        # Scroll the feed container
+        driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", feed)
 
+    time.sleep(2.5) # Crucial: Google Maps throttles rapid requests
 print(f"total length of cards:{len(cards)}")
 def wait_for_panel_change(driver, old_name, timeout=6):
     print(f"name before: {old_name}")
@@ -78,8 +98,9 @@ def wait_for_panel_change(driver, old_name, timeout=6):
         lambda d: get_text_or_blank(d, "h1.DUwDvf") != old_name
     )
 
+rows =[]
 for card in cards:
-    print(f"card: {card}")
+    # print(f"card: {card}")
     try:
         name_before = get_text_or_blank(driver, "h1.DUwDvf")
 
@@ -100,10 +121,20 @@ for card in cards:
             continue
 
         phone = get_text_or_blank(driver, 'button[data-item-id^="phone"] .Io6YTe')
-        reviews = get_text_or_blank(driver, 'button[jsaction*="pane.rating"] span')
+        rating = get_text_or_blank(driver, 'div.F7nice span[aria-hidden="true"]')
         link = get_text_or_blank(driver, 'a[data-item-id="authority"]')
 
-        print(f"{name} | {address} | {phone} | {reviews} | {link}")
+        print(f"{name} | {address} | {phone} | {rating} | {link}")
+        rows.append({
+            "Name": name,
+            "Address": address,
+            "Phone": phone,
+            "review_count": rating
+        })
 
     except StaleElementReferenceException:
         continue
+
+df = pd.DataFrame(rows)
+df.to_excel("dairy_380001.xlsx", index=False)
+print("Saved to dairy_380001.xlsx")
