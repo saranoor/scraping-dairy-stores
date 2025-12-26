@@ -28,7 +28,7 @@ def get_zip_code_dairy(zip_code, proxy):
     options = Options()
     options.add_argument('--ignore-certificate-errors')
     options.add_argument('--ignore-ssl-errors')
-    # options.add_argument(f"--proxy-server={proxy}")
+    options.add_argument(f"--proxy-server={proxy}")
     options.add_argument(" - headless") # Run browser in the background
     options.add_experimental_option("detach", True)
     driver = webdriver.Chrome(service=Service(), options=options)
@@ -157,8 +157,8 @@ def get_zip_code_dairy(zip_code, proxy):
                 print(f"Skipping {name} as it does not match the zip code {zip_code} in address: {address}")
                 continue
 
-            # phone = get_text_or_blank(driver, 'button[data-item-id^="phone"] .Io6YTe')
-            # rating = get_text_or_blank(driver, 'div.F7nice span[aria-hidden="true"]')
+            phone = get_text_or_blank(driver, 'button[data-item-id^="phone"] .Io6YTe')
+            rating = get_text_or_blank(driver, 'div.F7nice span[aria-hidden="true"]')
             link = get_text_or_blank(driver, 'a[data-item-id="authority"]') 
             print(f"{name} | {address}") 
             print("\n")
