@@ -28,7 +28,7 @@ def get_zip_code_dairy(zip_code, proxy):
     options = Options()
     options.add_argument('--ignore-certificate-errors')
     options.add_argument('--ignore-ssl-errors')
-    options.add_argument(f"--proxy-server={proxy}")
+    # options.add_argument(f"--proxy-server={proxy}")
     options.add_argument(" - headless") # Run browser in the background
     options.add_experimental_option("detach", True)
     driver = webdriver.Chrome(service=Service(), options=options)
@@ -52,7 +52,7 @@ def get_zip_code_dairy(zip_code, proxy):
     )
     TARGET_PIN = "380001"
     search_box.send_keys(f"dairy zip code {zip_code}, Ahmedabad, Gujrat")
-    
+
     try:
         search_button = driver.find_element(By.CSS_SELECTOR, "button[aria-label='Search']")
         search_button.click()
@@ -101,47 +101,77 @@ def get_zip_code_dairy(zip_code, proxy):
 
         time.sleep(2.5) # Crucial: Google Maps throttles rapid requests
     print(f"total length of cards:{len(cards)}")
-    def wait_for_panel_change(driver, old_name, timeout=6):
+    def wait_for_panel_change(driver, old_name, timeout=15):
         print(f"name before: {old_name}")
         WebDriverWait(driver, timeout).until(
             lambda d: get_text_or_blank(d, "h1.DUwDvf") != old_name
         )
+    
+    def wait_for_selection(card, timeout=10):
+        WebDriverWait(driver, timeout).until(
+            lambda d: (
+                card.get_attribute("aria-selected") == "true"
+                or "bfdHYd" in (card.get_attribute("class") or "")
+            )
+        )
 
+    last_name = ""
     rows =[]
-    for card in cards:
-        # print(f"card: {card}")
-        try:
-            name_before = get_text_or_blank(driver, "h1.DUwDvf")
 
+
+
+    for card in cards:
+        try:
             driver.execute_script("arguments[0].scrollIntoView({block:'center'});", card)
-            # driver.execute_script("arguments[0].click();", card)
-            click_target = card.find_element(By.XPATH, ".//a | .//button")
-            driver.execute_script("arguments[0].click();", click_target)
+            old_title = driver.find_elements(By.CSS_SELECTOR, "h1.DUwDvf")
+            old_title = old_title[0] if old_title else None
+            click_target = card.find_element(By.XPATH, ".//a | .//button")  
+            driver.execute_script("arguments[0].click();", click_target)   
+            # 🔴 WAIT until the place name changes
+            try:
+                wait.until(lambda d: card.get_attribute("aria-selected") == "true")
+            except TimeoutException:
+                print("card did not get selected moving on")
+            try:
+                wait.until(lambda d: (
+                    d.find_element(By.CSS_SELECTOR, "h1.DUwDvf").text.strip() != "" and
+                    d.find_element(By.CSS_SELECTOR, "h1.DUwDvf").text.strip() != last_name
+                ))
+            except TimeoutException:
+                print("place name did not change moving on")
 
             try:
-                wait_for_panel_change(driver, name_before)
-            except TimeoutException:
-                print("did not open anything moving on")
-                continue  # click didn't open anything → skip safely
-            name = get_text_or_blank(driver, "h1.DUwDvf")
-            address = get_text_or_blank(driver, 'button[data-item-id^="address"] .Io6YTe')
-
-            if TARGET_PIN not in address:
+                if old_title:
+                    print("wait for panel refresh")
+                    wait.until(EC.staleness_of(old_title))
+                    print("wait for the panel content to load")
+                    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "h1.DUwDvf")))
+            except TimeoutException as e:
+                print(f"stale wait did not work moving on and the error is: {e}")  
+                print("\n")
                 continue
 
-            phone = get_text_or_blank(driver, 'button[data-item-id^="phone"] .Io6YTe')
-            rating = get_text_or_blank(driver, 'div.F7nice span[aria-hidden="true"]')
-            link = get_text_or_blank(driver, 'a[data-item-id="authority"]')
+            name = get_text_or_blank(driver, "h1.DUwDvf")
+            address = get_text_or_blank(driver, 'button[data-item-id^="address"] .Io6YTe')   
+            if zip_code not in address:
+                print(f"Skipping {name} as it does not match the zip code {zip_code} in address: {address}")
+                continue
 
-            print(f"{name} | {address} | {phone} | {rating} | {link}")
+            # phone = get_text_or_blank(driver, 'button[data-item-id^="phone"] .Io6YTe')
+            # rating = get_text_or_blank(driver, 'div.F7nice span[aria-hidden="true"]')
+            link = get_text_or_blank(driver, 'a[data-item-id="authority"]') 
+            print(f"{name} | {address}") 
+            print("\n")
+            last_name = name
             rows.append({
-                "Name": name,
-                "Address": address,
-                "Phone": phone,
-                "review_count": rating
-            })
+                    "Name": name,
+                    "Address": address,
+                    "Phone": phone,
+                    "review_count": rating
 
-        except StaleElementReferenceException:
+                })
+        except (StaleElementReferenceException) as e:
+            print("did not open anything moving on:", e)
             continue
 
     df = pd.DataFrame(rows)
@@ -150,4 +180,4 @@ def get_zip_code_dairy(zip_code, proxy):
 
     driver.quit()
 
-# get_zip_code_dairy("380001", "101.47.17.165:7890")
+# get_zip_code_dairy("380001",None)

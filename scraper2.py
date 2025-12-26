@@ -97,7 +97,7 @@ if __name__ == "__main__":
     while True: 
         proxy = proxy_list.pop()
         try:
-            get_zip_code_dairy("380002", proxy=proxy)  
+            get_zip_code_dairy("380003", proxy=proxy)  
             print("Success with proxy:", proxy, "for zip code 380002. Now breaking out of loop.")
             break
         except ReadTimeoutError as e:
