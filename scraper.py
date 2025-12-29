@@ -97,8 +97,6 @@ def parse_cards(driver, cards, zip_code):
     wait = WebDriverWait(driver, 10)
 
     for card in cards:
-        data = {}
-
         try:
             driver.execute_script("arguments[0].scrollIntoView({block:'center'});", card)
             old_title = driver.find_elements(By.CSS_SELECTOR, "h1.DUwDvf")
@@ -130,7 +128,6 @@ def parse_cards(driver, cards, zip_code):
                 postal_code = zip_code
             phone = get_text_or_blank(driver, 'button[data-item-id^="phone"] .Io6YTe')
             rating = get_text_or_blank(driver, 'div.F7nice span[aria-hidden="true"]')
-            link = get_text_or_blank(driver, 'a[data-item-id="authority"]') 
 
             last_name = name
             rows.append({
@@ -149,22 +146,8 @@ def parse_cards(driver, cards, zip_code):
 def get_zip_code_dairy(zip_code, proxy):    
     driver = create_driver(proxy)
     driver.get("https://www.google.com/maps")
-
-    actions = ActionChains(driver)
-
-    try:
-        accept_button = driver.find_element(By.CSS_SELECTOR, "[aria-label='Accept all']")
-        accept_button.click()
-    except NoSuchElementException:
-        print("No GDPR requirements detected")
-
-    # --- search complete --- 
     search_box_send_keys(driver, zip_code)
-
-    # load all results
     cards = load_all_cards(driver)
-
-    # --- scrape data by iterating through all cards ---
     rows = parse_cards(driver, cards,zip_code)
 
     df = pd.DataFrame(rows)
@@ -174,4 +157,4 @@ def get_zip_code_dairy(zip_code, proxy):
     time.sleep(60)
     driver.quit()
 
-get_zip_code_dairy("380004",None)
+# get_zip_code_dairy("380004",None)
